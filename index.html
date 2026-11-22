@@ -50,7 +50,7 @@ input{width:100%;box-sizing:border-box;margin-bottom:6px}
 <div class="big" id="gname"></div>
 <div id="tb"></div>
 <div id="adm" hidden style="margin-top:10px"><div class="mut">Kurucu: üye ekle (adı sen verirsin, sadece bu grupta geçerli)</div>
-<input id="ac" placeholder="Üye ID’si (BN-XXXXXX)"><input id="an" placeholder="Grupta görünecek ad"><button id="am">Üye ekle</button></div>
+<input id="ac" placeholder="Üye ID’si (BN-XXXXXX)"><input id="an" placeholder="Grupta görünecek ad"><button id="am">Üye ekle</button> <button id="dg" class="g">Grubu sil</button></div>
 </div>
 <details style="margin-top:10px"><summary>Yeni gizli grup kur</summary>
 <input id="gn" placeholder="Grup adı" style="margin-top:8px"><input id="mn" placeholder="Senin grupta görünecek adın"><input id="gk" type="password" placeholder="Grup anahtarı (en az 6 karakter)"><button id="mk">Grubu kur</button>
@@ -133,7 +133,7 @@ async function init(){me=ls.g('bn_me');if(!me){me='BN-'+gen(6);ls.s('bn_me',me)}
 if(ls.g('bn_me')!==me)toast('Tarayıcı depolaması kapalı: ID ve anahtarlar kalıcı olmaz');
 $('#me').textContent=me;poll();setInterval(poll,5000)}
 async function poll(){try{const l=await call('groups',{code:me});sawSnap=true;groups={};l.forEach(g=>groups[g.id]=g);await Promise.all(Object.keys(groups).map(decG));
-if(!groups[gid])gid=Object.keys(groups)[0]||null;renderG();await pollT()}catch(e){if(!sawSnap)$('#gs').textContent='Sunucuya ulaşılamıyor (api.php yüklü ve PHP çalışıyor mu?)'}}
+if(!groups[gid])gid=Object.keys(groups)[0]||null;renderG();await pollT()}catch(e){if(!sawSnap)$('#gs').textContent='Sunucuya ulaşılamıyor ('+e.message+'). Adresin sonuna /api?a=ping yazıp bak.'}}
 async function pollT(){if(!gid||!keys[gid])return;tDay=C.day;const g0=gid;try{const l=await call('ticks',{g:g0,day:tDay,tok:await tok(g0)}),t={};
 for(const x of l){try{t[x.code]=await unseal(keys[g0],x.enc)}catch(e){}}if(g0===gid){ticks=t;tLoaded=true;renderT()}}catch(e){}}
 function subT(){ticks={};tLoaded=false;pollT()}
@@ -157,5 +157,9 @@ $('#am').onclick=async()=>{const g=groups[gid],d=G[gid];if(!g||!d||d.founder!==m
 if(!/^BN-[A-Z0-9]{6}$/.test(c)||!n)return toast('ID biçimi BN-XXXXXX ve ad gerekli');
 try{await call('setgroup',null,{id:gid,data:{salt:g.salt,memberCodes:[...new Set([...g.memberCodes,c])],enc:await seal(keys[gid],{...d,members:{...d.members,[c]:{name:n}}})},tok:await tok(gid)});poll();$('#ac').value=$('#an').value='';toast('Üye eklendi')}catch(e){toast('Eklenemedi')}};
 $('#cp').onclick=()=>{try{navigator.clipboard.writeText(me).then(()=>toast('ID kopyalandı'))}catch(e){toast(me)}};
+$('#dg').onclick=async()=>{const g=groups[gid],d=G[gid];if(!g||!d||d.founder!==me)return;
+if(!confirm('“'+d.name+'” grubu herkes için silinsin mi? Geri alınamaz.'))return;
+try{const old=gid;await call('delgroup',null,{id:old,tok:await tok(old)});delete groups[old];delete G[old];delete keys[old];
+try{localStorage.removeItem('bn_k_'+old)}catch(e){}gid=Object.keys(groups)[0]||null;renderG();subT();toast('Grup silindi')}catch(e){toast('Silinemedi')}};
 tick();setInterval(tick,1000);init();
 </script></body></html>

@@ -2,8 +2,10 @@
 // Gizli bilgi kodda yok; Redis bağlantısı Vercel ortam değişkenlerinden gelir.
 const crypto = require('crypto');
 
-const URL_ = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-const TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+// Upstash/Vercel entegrasyonu değişken adına önek ekleyebilir (ör. STORAGE_KV_REST_API_URL); hepsini yakala.
+const envFind = re => { const k = Object.keys(process.env).find(k => re.test(k)); return k ? process.env[k] : undefined; };
+const URL_ = (envFind(/(^|_)(KV_REST_API_URL|UPSTASH_REDIS_REST_URL)$/) || '').replace(/\/$/, '');
+const TOKEN = envFind(/(^|_)(KV_REST_API_TOKEN|UPSTASH_REDIS_REST_TOKEN)$/);
 
 async function R(...cmds) {                       // Upstash REST pipeline
   const r = await fetch(URL_ + '/pipeline', {
@@ -30,6 +32,11 @@ const authed = (g, tok) => !!g && typeof tok === 'string' && tok.length >= 32 &&
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
+    if (req.query && req.query.a === 'ping') {    // teşhis: /api?a=ping
+      let redis = 'bağlı değil';
+      if (URL_ && TOKEN) { try { redis = String(await one(['PING'])); } catch (e) { redis = 'hata: ' + e.message; } }
+      return res.json({ ok: 1, env: !!(URL_ && TOKEN), redis });
+    }
     if (!URL_ || !TOKEN) return res.status(500).json({ err: 'redis ayarlı değil' });
     const b = req.body && typeof req.body === 'object' ? req.body : {};
     const q = req.query || {};
@@ -78,6 +85,16 @@ module.exports = async (req, res) => {
       if (!gr.memberCodes.includes(code)) return res.status(403).json({ err: 'member' });
       const key = 't:' + g + ':' + day;
       await R(['HSET', key, code, enc], ['EXPIRE', key, 432000]);   // 5 gün sonra otomatik silinir
+      return res.json({ ok: 1 });
+    }
+
+    if (a === 'delgroup' && post) {               // grubu ve tüm tiklerini sil (jeton ister)
+      const { id, tok } = b;
+      if (!okId(id)) return res.status(400).json({ err: 'bad' });
+      const g = await getG(id);
+      if (!authed(g, tok)) return res.status(403).json({ err: 'auth' });
+      const tk = (await one(['KEYS', 't:' + id + ':*'])) || [];
+      await R(['DEL', 'g:' + id], ...g.memberCodes.map(c => ['SREM', 'm:' + c, id]), ...tk.map(k => ['DEL', k]));
       return res.json({ ok: 1 });
     }
 
